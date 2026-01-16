@@ -21,7 +21,7 @@ use std::{fmt, string::FromUtf8Error};
 
 #[derive(Debug)]
 pub enum PresenceError {
-    Discord(String),
+    WebSocket(String),
     Config(String),
     Io(std::io::Error),
     JsonParse(serde_json::Error),
@@ -31,7 +31,7 @@ pub enum PresenceError {
 impl fmt::Display for PresenceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PresenceError::Discord(msg) => write!(f, "Discord error: {msg}"),
+            PresenceError::WebSocket(msg) => write!(f, "WebSocket error: {msg}"),
             PresenceError::Config(msg) => write!(f, "Config error: {msg}"),
             PresenceError::Io(err) => write!(f, "IO error: {err}"),
             PresenceError::JsonParse(err) => write!(f, "JSON parse error: {err}"),

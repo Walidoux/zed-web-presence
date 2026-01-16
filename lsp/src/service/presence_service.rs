@@ -49,25 +49,24 @@ impl PresenceService {
             self.reset_idle_timeout().await?;
         }
 
-        // Build and set activity
+        // Build and send presence data
         let activity_fields = self.build_activity_fields(doc.as_ref()).await?;
         let git_url = self.get_git_url_if_enabled().await?;
 
-        self.set_discord_activity(activity_fields, git_url).await?;
+        self.send_presence_data(activity_fields, doc.as_ref(), git_url).await?;
 
         Ok(())
     }
 
-    pub async fn initialize_discord(&self, application_id: &str) -> Result<()> {
-        let mut discord = self.state.discord.lock().await;
-        discord.create_client(application_id)?;
-        discord.connect_with_retry().await?;
+    pub async fn initialize_websocket(&self) -> Result<()> {
+        let mut websocket = self.state.websocket.lock().await;
+        websocket.connect_with_retry().await?;
         Ok(())
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        let discord = self.state.discord.lock().await;
-        discord.kill().await?;
+        let mut websocket = self.state.websocket.lock().await;
+        websocket.kill().await;
         Ok(())
     }
 
@@ -98,15 +97,16 @@ impl PresenceService {
         }
     }
 
-    async fn set_discord_activity(
+    async fn send_presence_data(
         &self,
         activity_fields: crate::activity::ActivityFields,
+        doc: Option<&crate::document::Document>,
         git_url: Option<String>,
     ) -> Result<()> {
-        let discord = self.state.discord.lock().await;
+        let mut websocket = self.state.websocket.lock().await;
 
-        discord
-            .change_activity_with_reconnect(activity_fields, git_url)
+        websocket
+            .send_presence_data_with_reconnect(activity_fields, doc, git_url)
             .await?;
 
         Ok(())
@@ -119,7 +119,7 @@ impl PresenceService {
         };
         self.idle_manager
             .reset_timeout(
-                Arc::clone(&self.state.discord),
+                Arc::clone(&self.state.websocket),
                 Arc::clone(&self.state.config),
                 Arc::clone(&self.state.git_remote_url),
                 Arc::clone(&self.state.git_branch),

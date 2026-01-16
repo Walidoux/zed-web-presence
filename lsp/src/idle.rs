@@ -25,8 +25,8 @@ use tokio::time;
 use crate::{
     activity::ActivityManager,
     config::{Configuration, IdleAction},
-    discord::Discord,
     document::Document,
+    websocket::WebSocketClient,
 };
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ impl IdleManager {
 
     pub async fn reset_timeout(
         &self,
-        discord: Arc<Mutex<Discord>>,
+        websocket: Arc<Mutex<WebSocketClient>>,
         config: Arc<Mutex<Configuration>>,
         git_remote_url: Arc<Mutex<Option<String>>>,
         git_branch: Arc<Mutex<Option<String>>>,
@@ -68,11 +68,11 @@ impl IdleManager {
             time::sleep(timeout_duration).await;
 
             let config_guard = config.lock().await;
-            let discord_guard = discord.lock().await;
+            let mut websocket_guard = websocket.lock().await;
 
             match config_guard.idle.action {
                 IdleAction::ClearActivity => {
-                    let _ = discord_guard.clear_activity().await; // Ignore errors in background task
+                    websocket_guard.kill().await; // Close WebSocket connection for idle
                 }
                 IdleAction::ChangeActivity => {
                     let doc = last_document.lock().await;
@@ -93,8 +93,8 @@ impl IdleManager {
                         None
                     };
 
-                    let _ = discord_guard
-                        .change_activity_with_reconnect(activity_fields, git_url)
+                    let _ = websocket_guard
+                        .send_presence_data_with_reconnect(activity_fields, doc, git_url)
                         .await; // Ignore errors in background task
                 }
             }

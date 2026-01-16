@@ -33,13 +33,12 @@ use serde_json::{Map, Value};
 
 use crate::{config::activity::Activity, error::Result};
 
-const DEFAULT_APP_ID: &str = "1263505205522337886";
 const DEFAULT_ICONS_URL: &str =
     "https://raw.githubusercontent.com/xhyrom/zed-discord-presence/main/assets/icons/";
 
 #[derive(Debug, Clone)]
 pub struct Configuration {
-    pub application_id: String,
+    pub websocket_url: String,
     pub base_icons_url: String,
     pub activity: Activity,
     pub rules: Rules,
@@ -51,7 +50,7 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Self {
-            application_id: DEFAULT_APP_ID.to_string(),
+            websocket_url: "ws://localhost:3000/ws".to_string(),
             base_icons_url: DEFAULT_ICONS_URL.to_string(),
             activity: Activity::default(),
             rules: Rules::default(),
@@ -64,8 +63,8 @@ impl Default for Configuration {
 
 impl UpdateFromJson for Configuration {
     fn update_from_json(&mut self, json: &Value) -> Result<()> {
-        if let Some(app_id) = json.get("application_id").and_then(Value::as_str) {
-            self.application_id = app_id.to_string();
+        if let Some(ws_url) = json.get("websocket_url").and_then(Value::as_str) {
+            self.websocket_url = ws_url.to_string();
         }
 
         if let Some(icons_url) = json.get("base_icons_url").and_then(Value::as_str) {

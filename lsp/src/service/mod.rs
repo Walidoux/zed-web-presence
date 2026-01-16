@@ -23,13 +23,13 @@ mod workspace_service;
 pub use presence_service::PresenceService;
 pub use workspace_service::WorkspaceService;
 
-use crate::{config::Configuration, discord::Discord, document::Document};
+use crate::{config::Configuration, document::Document, websocket::WebSocketClient};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub struct AppState {
-    pub discord: Arc<Mutex<Discord>>,
+    pub websocket: Arc<Mutex<WebSocketClient>>,
     pub config: Arc<Mutex<Configuration>>,
     pub workspace: Arc<Mutex<WorkspaceService>>,
     pub git_remote_url: Arc<Mutex<Option<String>>>,
@@ -38,9 +38,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(websocket_url: String) -> Self {
         Self {
-            discord: Arc::new(Mutex::new(Discord::new())),
+            websocket: Arc::new(Mutex::new(WebSocketClient::new(websocket_url))),
             config: Arc::new(Mutex::new(Configuration::default())),
             workspace: Arc::new(Mutex::new(WorkspaceService::new())),
             git_remote_url: Arc::new(Mutex::new(None)),

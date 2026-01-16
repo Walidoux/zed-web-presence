@@ -35,7 +35,6 @@ use tracing::{debug, error, info, instrument, warn};
 
 mod activity;
 mod config;
-mod discord;
 mod document;
 mod error;
 mod git;
@@ -44,17 +43,19 @@ mod languages;
 mod logger;
 mod service;
 mod util;
+mod websocket;
 
 #[derive(Debug)]
 struct Backend {
     client: Client,
     presence_service: PresenceService,
     app_state: Arc<AppState>,
+    websocket_url: String,
 }
 
 impl Backend {
-    fn new(client: Client) -> Self {
-        let app_state = Arc::new(AppState::new());
+    fn new(client: Client, websocket_url: String) -> Self {
+        let app_state = Arc::new(AppState::new(websocket_url.clone()));
         let presence_service = PresenceService::new(Arc::clone(&app_state));
 
         info!("Backend initialized");
@@ -63,6 +64,7 @@ impl Backend {
             client,
             presence_service,
             app_state,
+            websocket_url,
         }
     }
 
@@ -160,16 +162,25 @@ impl LanguageServer for Backend {
 
         // Update config
         {
+            info!("Received initialization options: {:?}", params.initialization_options);
             let mut config = self.app_state.config.lock().await;
             if let Err(e) = config.update(params.initialization_options) {
                 error!("Failed to update config: {}", e);
                 return Err(tower_lsp::jsonrpc::Error::internal_error());
             }
 
-            debug!(
-                "Configuration updated: application_id={}, git_integration={}",
-                config.application_id, config.git_integration
+            info!(
+                "Configuration updated: websocket_url={}, git_integration={}",
+                config.websocket_url, config.git_integration
             );
+
+            // Update the websocket URL in app_state
+            {
+                let mut websocket_client = self.app_state.websocket.lock().await;
+                // We need to reconnect with the new URL
+                websocket_client.kill().await;
+                *websocket_client = crate::websocket::WebSocketClient::new(config.websocket_url.clone());
+            }
 
             // Check if workspace is suitable
             if !config.rules.suitable(workspace_path.to_str().unwrap_or("")) {
@@ -178,22 +189,17 @@ impl LanguageServer for Backend {
             }
         }
 
-        // Initialize Discord
+        // Initialize WebSocket
         // non-blocking, will retry on first activity update
         {
-            let config = self.app_state.config.lock().await;
-            match self
-                .presence_service
-                .initialize_discord(&config.application_id)
-                .await
-            {
+            match self.presence_service.initialize_websocket().await {
                 Ok(()) => {
-                    info!("Discord client initialized and connected");
+                    info!("WebSocket client initialized and connected");
                 }
                 Err(e) => {
                     // Don't fail initialization - connection will be retried on activity update
                     warn!(
-                        "Discord connection failed during init, will retry on activity: {}",
+                        "WebSocket connection failed during init, will retry on activity: {}",
                         e
                     );
                 }
@@ -266,17 +272,21 @@ async fn main() {
     logger::init_logger();
 
     info!(
-        "Starting Discord Presence LSP server v{}",
+        "Starting Presence WebSocket LSP server v{}",
         env!("CARGO_PKG_VERSION")
     );
 
+    // WebSocket URL will be configured through LSP initialization options
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(Backend::new);
+    let (service, socket) = LspService::new(|client| {
+        // We'll get the websocket URL from config during initialization
+        Backend::new(client, "ws://localhost:3000/ws".to_string())
+    });
 
     info!("LSP service created, starting server");
     Server::new(stdin, stdout, socket).serve(service).await;
 
-    info!("Discord Presence LSP server stopped");
+    info!("Presence WebSocket LSP server stopped");
 }
